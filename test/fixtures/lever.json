@@ -1,0 +1,26 @@
+[
+  {
+    "id": "lever-101",
+    "text": "Full-Stack Engineer",
+    "categories": {
+      "commitment": "Full-time",
+      "department": "Product & Engineering",
+      "team": "Applications",
+      "location": "Remote - Europe"
+    },
+    "createdAt": 1792486800000,
+    "descriptionPlain": "Build customer-facing software.",
+    "lists": [
+      { "text": "What you will do", "content": "Ship reliable product features." }
+    ],
+    "additionalPlain": "Candidates must be based in Europe.",
+    "workplaceType": "remote",
+    "hostedUrl": "https://jobs.lever.co/example/lever-101",
+    "applyUrl": "https://jobs.lever.co/example/lever-101/apply"
+  },
+  {
+    "id": "lever-102",
+    "text": "Backend Engineer",
+    "hostedUrl": "https://jobs.lever.co/example/lever-102"
+  }
+]

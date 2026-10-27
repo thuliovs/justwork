@@ -1,0 +1,25 @@
+{
+  "apiVersion": "1",
+  "jobs": [
+    {
+      "id": "ashby-101",
+      "title": "Product Engineer",
+      "department": "Product",
+      "team": "Engineering",
+      "employmentType": "FullTime",
+      "location": "Europe",
+      "publishedAt": "2026-10-18T14:30:00Z",
+      "isListed": true,
+      "isRemote": true,
+      "workplaceType": "Remote",
+      "jobUrl": "https://jobs.ashbyhq.com/example/ashby-101",
+      "applyUrl": "https://jobs.ashbyhq.com/example/ashby-101/application",
+      "descriptionPlain": "Build a TypeScript product for customers in Europe."
+    },
+    {
+      "id": "ashby-102",
+      "title": "Software Engineer",
+      "jobUrl": "https://jobs.ashbyhq.com/example/ashby-102"
+    }
+  ]
+}

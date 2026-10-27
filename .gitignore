@@ -1,0 +1,43 @@
+# Dependencies
+/node_modules/
+
+# Next.js and production builds
+/.next/
+/out/
+/build/
+
+# Environment files (keep the documented template)
+.env*
+!.env.example
+
+# Tests and coverage
+/coverage/
+/.nyc_output/
+/test-results/
+/playwright-report/
+
+# Tool caches and generated TypeScript files
+/.drizzle/
+/.turbo/
+.eslintcache
+*.tsbuildinfo
+next-env.d.ts
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# Editors and operating systems
+/.idea/
+/.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Local deployment state and certificates
+/.vercel/
+*.pem
