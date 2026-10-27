@@ -14,7 +14,7 @@ export default function RootLayout({
     <html lang="pt">
       <body>
         <header className="site-header">
-          <div className="header-inner"><Link className="brand" href="/">just<span>work</span></Link><nav aria-label="Navegação principal"><Link href="/">Radar</Link><Link href="/applications">Candidaturas</Link></nav></div>
+          <div className="header-inner"><Link className="brand" href="/">just<span>work</span></Link><nav aria-label="Navegação principal"><Link href="/">Radar</Link><Link href="/applications">Candidaturas</Link><Link href="/sources">Fontes</Link></nav></div>
         </header>
         {children}
       </body>

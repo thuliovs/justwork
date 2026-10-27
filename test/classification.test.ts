@@ -69,6 +69,103 @@ test("presencial em Lisboa é eligible", () => {
   assert.equal(result.eligibility, "eligible");
 });
 
+test("localização estruturada em Portugal é eligible com modalidade unknown", () => {
+  const result = classified({
+    locationText: "Portugal",
+    evidence: [{ locationText: "Lisbon, Portugal" }],
+  });
+  assert.equal(result.remotePolicy, "unknown");
+  assert.equal(result.eligibility, "eligible");
+  assert.match(result.eligibilityReason, /localização oficial/u);
+});
+
+test("Lisboa e Porto com modalidade híbrida são eligible", () => {
+  for (const locationText of ["Lisbon, Portugal", "Porto"]) {
+    const result = classified({
+      locationText,
+      evidence: [{ structuredRemotePolicy: "hybrid" }],
+    });
+    assert.equal(result.remotePolicy, "hybrid");
+    assert.equal(result.eligibility, "eligible");
+  }
+});
+
+test("contratação global explícita é eligible", () => {
+  for (const description of [
+    "We hire globally. This is a fully remote role.",
+    "This role is remote and can be executed globally.",
+  ]) {
+    assert.equal(classified({ description }).eligibility, "eligible");
+  }
+  assert.equal(
+    classified({
+      description:
+        'While we hire <a href="/handbook">almost anywhere</a> in the world, Europe is preferred.',
+    }).eligibility,
+    "eligible",
+  );
+});
+
+test("restrição específica prevalece sobre declaração global genérica", () => {
+  const result = classified({
+    description:
+      "We hire globally, but we do require successful candidates to be located in the United States.",
+    evidence: [{ structuredRemotePolicy: "remote" }],
+  });
+  assert.equal(result.eligibility, "ineligible");
+});
+
+test("candidatos podem trabalhar de qualquer país europeu", () => {
+  const result = classified({
+    description: "Candidates can work from anywhere in Europe.",
+  });
+  assert.equal(result.eligibility, "eligible");
+});
+
+test("Remote Europe meramente descritivo permanece uncertain", () => {
+  const result = classified({
+    locationText: "Remote Europe",
+    evidence: [{ structuredRemotePolicy: "remote" }],
+  });
+  assert.equal(result.eligibility, "uncertain");
+});
+
+test("Americas Remote é ineligible sem confundir menção incidental", () => {
+  assert.equal(
+    classified({
+      locationText: "Americas Remote",
+      evidence: [{ structuredRemotePolicy: "remote" }],
+    }).eligibility,
+    "ineligible",
+  );
+  assert.equal(
+    classified({
+      description: "Collaborate with our Americas team. This role is remote.",
+    }).eligibility,
+    "uncertain",
+  );
+});
+
+test("presença obrigatória em Paris é híbrida e ineligible", () => {
+  const result = classified({
+    locationText: "Paris, France",
+    description:
+      "We offer remote flexibility, but come together in the office on Mondays, Tuesdays, and Thursdays.",
+  });
+  assert.equal(result.remotePolicy, "hybrid");
+  assert.equal(result.eligibility, "ineligible");
+});
+
+test("dias obrigatórios no escritório prevalecem sobre modalidade remote estruturada", () => {
+  assert.equal(
+    classifyRemotePolicy({
+      description: "Remote flexibility is available. Three days per week in the office are required.",
+      evidence: [{ structuredRemotePolicy: "remote" }],
+    }),
+    "hybrid",
+  );
+});
+
 test("menção incidental a Portugal não gera eligible", () => {
   const result = classified({
     description:
@@ -170,4 +267,85 @@ test("classifica Applied AI Engineer sem incluir Data Scientist", () => {
     "applied_ai",
   );
   assert.equal(classifyRoleFamily({ title: "Data Scientist" }), "other");
+});
+
+test("Platform Engineer exige desenvolvimento real", () => {
+  assert.equal(
+    classifyRoleFamily({
+      title: "Platform Engineer",
+      description: "Design and implement distributed services and APIs in TypeScript and Go.",
+    }),
+    "backend",
+  );
+  assert.equal(
+    classifyRoleFamily({
+      title: "Platform Engineer",
+      description: "Coordinate vendors and monitor operational tickets.",
+    }),
+    "other",
+  );
+});
+
+test("SRE operacional permanece other, mas development role é software engineering", () => {
+  assert.equal(
+    classifyRoleFamily({
+      title: "Site Reliability Engineer",
+      description: "Monitor alerts, follow runbooks, and coordinate incident response.",
+    }),
+    "other",
+  );
+  assert.equal(
+    classifyRoleFamily({
+      title: "Site Reliability Engineer",
+      description: "This is a development role. Build infrastructure automation using Python.",
+    }),
+    "software_engineering",
+  );
+});
+
+test("SDK Engineer com autoria de biblioteca é software engineering", () => {
+  assert.equal(
+    classifyRoleFamily({
+      title: "SDK Engineer - Python",
+      description: "This is a library-authoring role. Build and maintain our public Python SDK.",
+    }),
+    "software_engineering",
+  );
+});
+
+test("AI Platform Engineer com runtime de agentes é applied AI", () => {
+  assert.equal(
+    classifyRoleFamily({
+      title: "AI Platform Engineer",
+      description: "Build the runtime that executes AI agents and evaluates model outputs.",
+    }),
+    "applied_ai",
+  );
+});
+
+test("Solutions Consultant com implementação e APIs é integração", () => {
+  assert.equal(
+    classifyRoleFamily({
+      title: "Senior Solution Consultant",
+      description: "Implement customer solutions, write JavaScript, and integrate REST APIs.",
+    }),
+    "integration_implementation",
+  );
+});
+
+test("manager e suporte permanecem other mesmo com vocabulário técnico", () => {
+  assert.equal(
+    classifyRoleFamily({
+      title: "Engineering Manager",
+      description: "Lead engineers building TypeScript APIs.",
+    }),
+    "other",
+  );
+  assert.equal(
+    classifyRoleFamily({
+      title: "Database Support Engineer",
+      description: "Support PostgreSQL users and troubleshoot production incidents.",
+    }),
+    "other",
+  );
 });

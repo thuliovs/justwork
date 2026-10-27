@@ -1,4 +1,4 @@
-import { and, eq, inArray, notInArray, sql } from "drizzle-orm";
+import { and, eq, inArray, lt, notInArray, sql } from "drizzle-orm";
 
 import {
   getConnector,
@@ -18,11 +18,11 @@ import { classifyAndPersistJob } from "@/lib/jobs/classification";
 import { listingContentHash, stableExternalId } from "./listing-identity";
 
 export type CollectionSummary = {
-  runId: string;
+  runId: string | null;
   sourceId: string;
   sourceName: string;
   provider: Source["type"];
-  status: "success" | "partial" | "failed";
+  status: "success" | "partial" | "failed" | "skipped";
   found: number;
   created: number;
   updated: number;
@@ -36,6 +36,8 @@ export type CollectionSummary = {
   durationMs: number;
   error?: string;
 };
+
+export const SOURCE_RUN_STALE_AFTER_MS = 2 * 60 * 60 * 1_000;
 
 type CollectSourceOptions = {
   connector?: JobConnector;
@@ -288,10 +290,48 @@ export async function collectSource(
   }
 
   const startedAt = now();
+  const staleBefore = new Date(startedAt.getTime() - SOURCE_RUN_STALE_AFTER_MS);
+  await db
+    .update(sourceRuns)
+    .set({
+      finishedAt: startedAt,
+      status: "failed",
+      errorMessage: "Execução interrompida ou abandonada antes da conclusão.",
+    })
+    .where(
+      and(
+        eq(sourceRuns.sourceId, sourceId),
+        eq(sourceRuns.status, "running"),
+        lt(sourceRuns.startedAt, staleBefore),
+      ),
+    );
   const [run] = await db
     .insert(sourceRuns)
     .values({ sourceId, startedAt, status: "running" })
+    .onConflictDoNothing()
     .returning({ id: sourceRuns.id });
+
+  if (!run) {
+    return {
+      runId: null,
+      sourceId,
+      sourceName: source.name,
+      provider: source.type,
+      status: "skipped",
+      found: 0,
+      created: 0,
+      updated: 0,
+      unchanged: 0,
+      missing: 0,
+      failures: 0,
+      jobsCreated: 0,
+      jobsMatched: 0,
+      startedAt,
+      finishedAt: startedAt,
+      durationMs: 0,
+      error: "Esta fonte já possui uma coleta em andamento.",
+    };
+  }
 
   try {
     const connector = options.connector ?? getConnector(source.type);

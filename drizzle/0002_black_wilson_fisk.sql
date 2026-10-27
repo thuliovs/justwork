@@ -1,0 +1,2 @@
+CREATE UNIQUE INDEX "source_runs_source_running_uidx" ON "source_runs" USING btree ("source_id") WHERE "source_runs"."status" = 'running';--> statement-breakpoint
+CREATE UNIQUE INDEX "sources_provider_endpoint_uidx" ON "sources" USING btree ("type","base_url","external_key");

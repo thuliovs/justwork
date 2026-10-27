@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 
 import type {
   ConnectorResult,
@@ -25,6 +25,7 @@ import {
 import { backfillCanonicalJobs } from "../src/lib/jobs/backfill";
 import { reclassifyJobs } from "../src/lib/jobs/classification";
 import { collectSource } from "../src/lib/sources/collect-source";
+import { setSourceActive } from "../src/lib/sources/repository";
 import {
   listingContentHash,
   stableExternalId,
@@ -129,6 +130,26 @@ test(
     const absentObservedAt = new Date("2026-10-24T10:00:00Z");
 
     try {
+      await db.insert(sourceRuns).values({
+        sourceId: source.id,
+        status: "running",
+        startedAt: new Date("2099-01-01T00:00:00Z"),
+      });
+      const concurrent = await collectSource(source.id, {
+        connector: successfulConnector(new Date("2099-01-01T00:00:01Z"), []),
+        now: () => new Date("2099-01-01T00:00:01Z"),
+      });
+      assert.equal(concurrent.status, "skipped");
+      assert.equal(concurrent.runId, null);
+      await db.delete(sourceRuns).where(eq(sourceRuns.sourceId, source.id));
+
+      await setSourceActive(source.id, false);
+      const [disabled] = await db.select().from(sources).where(eq(sources.id, source.id));
+      assert.equal(disabled.isActive, false);
+      await setSourceActive(source.id, true);
+      const [enabled] = await db.select().from(sources).where(eq(sources.id, source.id));
+      assert.equal(enabled.isActive, true);
+
       const first = await collectSource(source.id, {
         connector: successfulConnector(firstObservedAt, [listing("version 1")]),
         now: () => firstObservedAt,
@@ -399,7 +420,8 @@ test(
       const runs = await db
         .select()
         .from(sourceRuns)
-        .where(eq(sourceRuns.sourceId, source.id));
+        .where(eq(sourceRuns.sourceId, source.id))
+        .orderBy(asc(sourceRuns.startedAt));
       assert.deepEqual(
         runs.map((run) => run.status),
         [

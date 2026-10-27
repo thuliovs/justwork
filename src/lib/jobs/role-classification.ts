@@ -17,7 +17,10 @@ function searchable(value: string | null | undefined) {
   return (value ?? "")
     .normalize("NFKC")
     .toLocaleLowerCase("en-US")
-    .replace(/[–—]/gu, "-");
+    .replace(/[–—]/gu, "-")
+    .replace(/<[^>]*>/gu, " ")
+    .replace(/&(?:nbsp|amp|quot|#39);/gu, " ")
+    .replace(/\s+/gu, " ");
 }
 
 export function classifyRoleFamily(input: RoleClassificationInput): RoleFamily {
@@ -43,14 +46,47 @@ export function classifyRoleFamily(input: RoleClassificationInput): RoleFamily {
     return "product_engineering";
   }
 
+  const strongDevelopmentEvidence =
+    /\b(?:write|writing|build|building|develop|developing|design|designing|implement|implementing|architect|architecting|maintain|maintaining|programming|coding)\b[^.!?\n]{0,100}\b(?:code|software|systems?|services?|platforms?|infrastructure|apis?|sdks?|libraries|tools?|automation|runtime|databases?)\b/u.test(description) ||
+    /\b(?:software engineering skills|development role|library-authoring role|distributed systems?|backend services?|production services?|public repositories?|packag(?:e|ing) software)\b/u.test(description);
+
+  if (
+    /\b(?:ai platform engineer|ml (?:&|and) agentic systems engineer)\b/u.test(title) &&
+    /\b(?:agents?|models?|machine learning|ai systems?|inference|evaluation)\b/u.test(description) &&
+    strongDevelopmentEvidence
+  ) {
+    return "applied_ai";
+  }
+
   const integrationTitle =
-    /\b(?:integration|implementation|solutions?|forward deployed) engineer\b/u.test(title);
+    /\b(?:integration|implementation|solutions?|forward deployed) engineer\b/u.test(title) ||
+    /\b(?:technical architect|solutions? consultant)\b/u.test(title);
   const developmentEvidence =
     /\b(?:programming|write code|coding|software development|develop(?:ing|ment)? (?:software|solutions?|integrations?)|api(?:s)?|sdk(?:s)?|system integration)\b/u.test(
       description,
     );
   if (integrationTitle) {
     return developmentEvidence ? "integration_implementation" : "other";
+  }
+
+  if (/\b(?:support|developer relations?|developer advocate|soc|detection)\b/u.test(title)) {
+    return "other";
+  }
+
+  if (
+    /\b(?:product security|application security|software security) engineer\b/u.test(title) &&
+    /\b(?:secure development|software development|architecture design|code review|product security)\b/u.test(description)
+  ) {
+    return "software_engineering";
+  }
+
+  if (
+    /\b(?:platform|cloud platform|site reliability|sre|sdk|postgres(?: deployment)?|database|infrastructure|release|performance|multigres) (?:software )?engineer\b/u.test(title) &&
+    strongDevelopmentEvidence
+  ) {
+    return /\b(?:distributed systems?|backend services?|production services?|apis?|databases?|postgres)\b/u.test(description)
+      ? "backend"
+      : "software_engineering";
   }
 
   if (/\bapi engineer\b/u.test(title)) {

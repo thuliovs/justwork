@@ -123,7 +123,14 @@ export const sources = pgTable(
     lastErrorAt: timestamp("last_error_at", { withTimezone: true }),
     ...timestamps,
   },
-  (table) => [index("sources_company_id_idx").on(table.companyId)],
+  (table) => [
+    index("sources_company_id_idx").on(table.companyId),
+    uniqueIndex("sources_provider_endpoint_uidx").on(
+      table.type,
+      table.baseUrl,
+      table.externalKey,
+    ),
+  ],
 );
 
 export const sourceRuns = pgTable(
@@ -146,6 +153,9 @@ export const sourceRuns = pgTable(
   (table) => [
     index("source_runs_source_id_idx").on(table.sourceId),
     index("source_runs_started_at_idx").on(table.startedAt),
+    uniqueIndex("source_runs_source_running_uidx")
+      .on(table.sourceId)
+      .where(sql`${table.status} = 'running'`),
   ],
 );
 

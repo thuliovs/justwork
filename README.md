@@ -26,6 +26,8 @@ O projeto contém a V1 utilizável do Radar, conectores para Greenhouse, Lever e
    Copy-Item .env.example .env
    ```
 
+   Substitua `ADMIN_TOKEN` por uma frase longa e privada. Ela desbloqueia apenas as operações administrativas da página de fontes; fica num cookie `httpOnly` assinado e não é armazenada no banco.
+
 3. Inicie o PostgreSQL:
 
    ```bash
@@ -58,6 +60,9 @@ A aplicação estará em `http://localhost:3000`. O endpoint `http://localhost:3
 - Os quatro atalhos no topo abrem as revisões de vagas incertas, família `other`, guardadas e ainda sem ação pessoal.
 - `/jobs/[id]` mostra a descrição em texto seguro, todas as fontes, datas de publicação e descoberta, notas e o formulário de candidatura.
 - `/applications` acompanha as candidaturas e permite atualizar o estágio do processo.
+- `/sources` mostra a saúde operacional, o histórico recente e, após informar `ADMIN_TOKEN`, permite coletar, ativar, desativar e cadastrar fontes dos ATS já suportados.
+
+A paginação da lista de candidaturas fica como melhoria futura. O volume atual não justifica adicionar essa complexidade à V1.
 
 Guardar, descartar ou restaurar uma vaga altera apenas o estado pessoal. A coleta continua a gerir separadamente o estado objetivo da oportunidade.
 
@@ -74,6 +79,7 @@ npm run db:seed      # executa o seed idempotente
 npm run db:studio    # abre o Drizzle Studio
 npm test             # testes offline e integração PostgreSQL local
 npm run source:fetch # lista sources cadastradas
+npm run sources:collect # coleta sequencialmente todas as sources ativas
 npm run jobs:backfill # associa listings antigas a jobs canônicos
 npm run jobs:classify # reclassifica geografia e família dos jobs
 ```
@@ -116,7 +122,7 @@ A camada de conectores normaliza respostas de:
 - Lever Europe;
 - Ashby.
 
-O seed adiciona uma source pública de desenvolvimento para cada modo. Para listar seus IDs:
+O seed adiciona fontes públicas de desenvolvimento e o registro prioritário P0/P1 validado no Deep Research. Esse registro inclui Dashlane, SingleStore, Talkdesk, Supabase, PostHog, Linear, ElevenLabs, Sourcegraph, Amplemarket, Customer.io e n8n. O cadastro é idempotente e preserva uma única source por endpoint conhecido. Para listar seus IDs:
 
 ```bash
 npm run source:fetch
@@ -129,6 +135,35 @@ npm run source:fetch -- <source-id>
 ```
 
 O comando registra uma linha em `source_runs`, persiste as listings, cria ou reutiliza jobs canônicos na mesma transação e mostra o resumo da execução. Repetir a mesma coleta atualiza a observação sem criar duplicatas.
+
+## Operação diária
+
+Uma coleta completa e independente do servidor Next.js pode ser iniciada com:
+
+```powershell
+npm run sources:collect
+```
+
+Cada fonte é isolada: uma falha é registrada e as restantes continuam. O processo termina com código `0` somente quando todas as fontes concluem com sucesso; resultado parcial, falha ou coleta ignorada por concorrência termina com código `1` para o Agendador sinalizar atenção.
+
+No Windows, instale a tarefa diária para o usuário atual (sem elevação) com:
+
+```powershell
+.\scripts\install-daily-task.ps1 -At "08:00"
+```
+
+A tarefa `justwork-daily-collection` usa um caminho absoluto para o runner, executa coletas perdidas quando o computador volta a ficar disponível e impede instâncias sobrepostas do próprio agendamento. Ela requer que o usuário esteja autenticado no Windows e que Docker Desktop/PostgreSQL estejam disponíveis; não transforma o computador numa operação 24/7. Para remover: `Unregister-ScheduledTask -TaskName justwork-daily-collection`.
+
+Além disso, o banco aceita apenas um `source_run` em andamento por fonte. Um run abandonado por mais de duas horas é encerrado como falha na coleta seguinte, e o lock transacional existente continua protegendo a persistência sem manter transações abertas durante chamadas aos ATS.
+
+## Backlog de fontes
+
+Empresas já pesquisadas, mas deliberadamente não integradas nesta etapa:
+
+- Greenhouse P2: GitLab, Cloudflare, Datadog, Grafana Labs, Elastic, Salsify, Algolia e Airbyte.
+- Novo conector ou investigação: Sword Health, OutSystems, Codacy, Blip, Remote, Mercedes-Benz.io, Pipedrive, Canonical e Doist.
+
+Elas não devem ser cadastradas até haver priorização e, quando necessário, um conector adequado.
 
 Os testes de parsing e persistência não acessam APIs externas. Quando `DATABASE_URL` está disponível, a integração PostgreSQL usa registros temporários e os remove ao terminar:
 

@@ -21,7 +21,12 @@ export type EligibilityResult = {
 };
 
 function searchable(value: string | null | undefined) {
-  return (value ?? "").normalize("NFKC").toLocaleLowerCase("en-US");
+  return (value ?? "")
+    .normalize("NFKC")
+    .toLocaleLowerCase("en-US")
+    .replace(/<[^>]*>/gu, " ")
+    .replace(/&(?:nbsp|amp|quot|#39);/gu, " ")
+    .replace(/\s+/gu, " ");
 }
 
 function distinct(values: Array<string | null | undefined>) {
@@ -32,7 +37,7 @@ const PORTUGAL_LOCATION =
   /\b(?:portugal|lisbon|lisboa|porto|braga|coimbra|aveiro|oeiras|cascais|sintra|set[uú]bal)\b/iu;
 const EUROPE_AMBIGUOUS = /\b(?:europe|emea|european time zones?)\b/iu;
 const CLEARLY_INCOMPATIBLE_REGION =
-  /\b(?:north america|united states|u\.?s\.?a?|canada|apac|asia[ -]pacific|australia|singapore)\b/iu;
+  /\b(?:americas?|amer|north america|united states|u\.?s\.?a?|canada|apac|asia[ -]pacific|australia|singapore)\b/iu;
 const NON_LOCATION =
   /^(?:remote|hybrid|on[ -]?site|multiple locations?|various|worldwide|global|anywhere|not specified|unknown)$/iu;
 
@@ -50,11 +55,24 @@ const EXPLICIT_EU = [
   /\b(?:hire|hiring)\s+(?:anywhere\s+)?(?:in|across|throughout)\s+(?:the\s+)?(?:eu|european union)\b/iu,
 ];
 
+const EXPLICIT_GLOBAL_OR_EUROPE = [
+  /\bwe hire globally\b/iu,
+  /\bthis role (?:is remote and )?can be (?:executed|performed) globally\b/iu,
+  /\b(?:candidates?|employees?) can work from anywhere (?:in|within) (?:the )?(?:eu|european union|europe)\b/iu,
+  /\bopen to candidates based in (?:north america|the (?:u\.?s\.?|united states)) and europe\b/iu,
+  /\bopen to candidates based in (?:the (?:u\.?s\.?|united states)|north america) (?:or|and) europe\b/iu,
+  /\b(?:role|position) is open to candidates based in europe\b/iu,
+  /\bhire almost anywhere in the world\b/iu,
+];
+
 const EXPLICIT_INCOMPATIBLE = [
   /\b(?:u\.?s\.?|united states|canada|north america|australia|singapore)\s+(?:residents?\s+)?only\b/iu,
   /\bonly\s+(?:candidates?|applicants?|residents?)\s+(?:in|from|based in|located in)\s+(?:the\s+)?(?:u\.?s\.?|united states|canada|north america|australia|singapore)\b/iu,
   /\b(?:must|required to)\s+(?:live|reside|be based|be located|work)\s+in\s+(?:the\s+)?(?:u\.?s\.?|united states|canada|north america|australia|singapore)\b/iu,
   /\bremote\s+(?:only\s+)?(?:in|from|within)\s+(?:the\s+)?(?:u\.?s\.?|united states|canada|north america|australia|singapore)\b/iu,
+  /\b(?:americas?|amer)\s+remote\b/iu,
+  /\bremote\s*[,(-]?\s*(?:americas?|amer)\b/iu,
+  /\brequire(?:s|d)?[^.!?\n]{0,100}\bcandidates?\b[^.!?\n]{0,80}\b(?:located|based|residing) in (?:the )?(?:u\.?s\.?|united states|canada|north america|australia|singapore)\b/iu,
 ];
 
 const WORK_AUTHORIZATION =
@@ -66,9 +84,13 @@ function containsAny(text: string, patterns: RegExp[]) {
 
 function descriptionPolicy(text: string): RemotePolicy | null {
   if (
-    /\b(?:hybrid (?:role|position|work|arrangement)|work(?:ing)? in a hybrid|hybrid schedule)\b/iu.test(
+    /\b(?:hybrid (?:role|position|work|arrangement|culture|model)|work(?:ing)? in a hybrid|hybrid schedule)\b/iu.test(
       text,
-    )
+    ) ||
+    /\b(?:two|three|four|five|[2-5]) days?(?: per week| weekly| a week)? (?:in|at|from) (?:the|our) office\b/iu.test(text) ||
+    /\b(?:in-office|office) (?:company )?days?[^.!?\n]{0,100}\b(?:monday|tuesday|wednesday|thursday|friday)\b/iu.test(text) ||
+    /\bcome together in the office on\b/iu.test(text) ||
+    /\b(?:required|expected) to (?:work|be|come) (?:in|at|from) (?:the|our) office\b/iu.test(text)
   ) {
     return "hybrid";
   }
@@ -89,6 +111,15 @@ function descriptionPolicy(text: string): RemotePolicy | null {
   return null;
 }
 
+function requiresOfficePresence(text: string) {
+  return (
+    /\b(?:two|three|four|five|[2-5]) days?(?: per week| weekly| a week)? (?:in|at|from) (?:the|our) office\b/iu.test(text) ||
+    /\b(?:in-office|office) (?:company )?days?[^.!?\n]{0,100}\b(?:monday|tuesday|wednesday|thursday|friday)\b/iu.test(text) ||
+    /\bcome together in the office on\b/iu.test(text) ||
+    /\b(?:required|expected) to (?:work|be|come) (?:in|at|from) (?:the|our) office\b/iu.test(text)
+  );
+}
+
 function locationPolicy(location: string): RemotePolicy | null {
   if (/\bhybrid\b/iu.test(location)) return "hybrid";
   if (/\bon[ -]?site\b/iu.test(location)) return "onsite";
@@ -98,6 +129,11 @@ function locationPolicy(location: string): RemotePolicy | null {
 
 export function classifyRemotePolicy(input: EligibilityInput): RemotePolicy {
   const evidence = input.evidence ?? [];
+  const descriptions = [input.description, ...evidence.map((item) => item.description)]
+    .map(searchable)
+    .filter(Boolean);
+  if (descriptions.some(requiresOfficePresence)) return "hybrid";
+
   const structured = distinct(
     evidence.map((item) => item.structuredRemotePolicy).filter((item) => item !== "unknown"),
   );
@@ -108,11 +144,7 @@ export function classifyRemotePolicy(input: EligibilityInput): RemotePolicy {
       locationPolicy(searchable(value)),
     ),
   );
-  const descriptionSignals = distinct(
-    [input.description, ...evidence.map((item) => item.description)].map((value) =>
-      descriptionPolicy(searchable(value)),
-    ),
-  );
+  const descriptionSignals = distinct(descriptions.map(descriptionPolicy));
   const signals = distinct([...structured, ...locationSignals, ...descriptionSignals]);
   return signals.length === 1 ? (signals[0] as RemotePolicy) : "unknown";
 }
@@ -132,6 +164,10 @@ export function classifyEligibility(input: EligibilityInput): EligibilityResult 
   const explicitPositive =
     containsAny(combinedDescription, EXPLICIT_PORTUGAL) ||
     containsAny(combinedDescription, EXPLICIT_EU);
+  const explicitGlobal = containsAny(
+    combinedDescription,
+    EXPLICIT_GLOBAL_OR_EUROPE,
+  );
   const explicitNegative = containsAny(combinedDescription, EXPLICIT_INCOMPATIBLE);
   const requiresUnknownAuthorization = WORK_AUTHORIZATION.test(combinedDescription);
   const portugalLocation = locations.some((location) => PORTUGAL_LOCATION.test(location));
@@ -170,6 +206,33 @@ export function classifyEligibility(input: EligibilityInput): EligibilityResult 
       rule: "geo.work_authorization_unknown",
     };
   }
+  if (portugalLocation) {
+    return {
+      eligibility: "eligible",
+      eligibilityReason:
+        "Eligible: Portugal está declarado como localização oficial da posição.",
+      remotePolicy,
+      rule: "geo.portugal_structured_location",
+    };
+  }
+  if (remotePolicy === "remote" && incompatibleRemoteRegion) {
+    return {
+      eligibility: "ineligible",
+      eligibilityReason:
+        "Ineligible: a localização estruturada da vaga remota está limitada a uma região incompatível com Portugal.",
+      remotePolicy,
+      rule: "geo.remote_incompatible_region",
+    };
+  }
+  if (explicitGlobal) {
+    return {
+      eligibility: "eligible",
+      eligibilityReason:
+        "Eligible: o anúncio afirma explicitamente que a vaga aceita contratação global ou candidatos baseados na Europa.",
+      remotePolicy,
+      rule: "geo.explicit_global_or_europe",
+    };
+  }
   if (explicitPositive) {
     return {
       eligibility: "eligible",
@@ -197,24 +260,6 @@ export function classifyEligibility(input: EligibilityInput): EligibilityResult 
       eligibilityReason: `Ineligible: vaga ${remotePolicy === "hybrid" ? "híbrida" : "presencial"} localizada fora de Portugal.`,
       remotePolicy,
       rule: "geo.foreign_workplace",
-    };
-  }
-  if (remotePolicy === "remote" && portugalLocation) {
-    return {
-      eligibility: "eligible",
-      eligibilityReason:
-        "Eligible: vaga remota com Portugal declarado como localização da posição.",
-      remotePolicy,
-      rule: "geo.remote_portugal_location",
-    };
-  }
-  if (remotePolicy === "remote" && incompatibleRemoteRegion) {
-    return {
-      eligibility: "ineligible",
-      eligibilityReason:
-        "Ineligible: a localização estruturada da vaga remota está limitada a uma região incompatível com Portugal.",
-      remotePolicy,
-      rule: "geo.remote_incompatible_region",
     };
   }
   if (remotePolicy === "remote" && ambiguousEurope) {

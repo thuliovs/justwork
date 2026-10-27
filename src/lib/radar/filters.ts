@@ -62,14 +62,10 @@ export function postedAgeBounds(age: AgeRange, now: Date) {
   const day = 86_400_000;
   const ago = (days: number) => new Date(now.getTime() - days * day);
   switch (age) {
-    case "0-3": return { from: ago(4), to: now };
-    case "4-7": return { from: ago(8), to: ago(4) };
-    case "8-14": return { from: ago(15), to: ago(8) };
-    case "15-30": return { from: ago(31), to: ago(15) };
-    case "30+": return { to: ago(31) };
+    case "0-3": return { afterExclusive: ago(4), throughInclusive: now };
+    case "4-7": return { afterExclusive: ago(8), throughInclusive: ago(4) };
+    case "8-14": return { afterExclusive: ago(15), throughInclusive: ago(8) };
+    case "15-30": return { afterExclusive: ago(31), throughInclusive: ago(15) };
+    case "30+": return { throughInclusive: ago(31) };
   }
-}
-
-export function hasExplicitVisibilityFilter(filters: RadarFilters) {
-  return Boolean(filters.eligibility || filters.actionState || filters.includeAll);
 }

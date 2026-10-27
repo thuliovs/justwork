@@ -4,11 +4,10 @@ import {
   count,
   desc,
   eq,
-  gte,
+  gt,
   ilike,
   inArray,
   isNull,
-  lt,
   lte,
   ne,
   or,
@@ -27,7 +26,7 @@ import {
 } from "@/lib/db/schema";
 
 import type { ActionState, ApplicationStatus } from "./constants";
-import { hasExplicitVisibilityFilter, postedAgeBounds, type RadarFilters } from "./filters";
+import { postedAgeBounds, type RadarFilters } from "./filters";
 
 export const RADAR_PAGE_SIZE = 20;
 
@@ -48,8 +47,8 @@ function buildConditions(filters: RadarFilters, now: Date) {
   }
   if (filters.age) {
     const bounds = postedAgeBounds(filters.age, now);
-    if (bounds.from) conditions.push(gte(jobs.postedAt, bounds.from));
-    conditions.push(filters.age === "30+" ? lt(jobs.postedAt, bounds.to) : lte(jobs.postedAt, bounds.to));
+    if (bounds.afterExclusive) conditions.push(gt(jobs.postedAt, bounds.afterExclusive));
+    conditions.push(lte(jobs.postedAt, bounds.throughInclusive));
   }
   if (filters.sourceId) {
     conditions.push(sql`exists (
@@ -57,9 +56,13 @@ function buildConditions(filters: RadarFilters, now: Date) {
       where sl.job_id = ${jobs.id} and sl.source_id = ${filters.sourceId}
     )`);
   }
-  if (!hasExplicitVisibilityFilter(filters)) {
-    conditions.push(ne(jobs.eligibility, "ineligible"));
-    conditions.push(or(isNull(jobActions.state), ne(jobActions.state, "dismissed"))!);
+  if (!filters.includeAll) {
+    if (filters.eligibility !== "ineligible") {
+      conditions.push(ne(jobs.eligibility, "ineligible"));
+    }
+    if (filters.actionState !== "dismissed") {
+      conditions.push(or(isNull(jobActions.state), ne(jobActions.state, "dismissed"))!);
+    }
   }
   return conditions;
 }
