@@ -1,209 +1,174 @@
-# justwork
+# JustWork
 
-Radar pessoal de vagas de Software Engineering, com foco em Portugal, Lisboa e trabalho remoto acessível a residentes em Portugal.
+**A local-first job radar for Software Engineering opportunities in Portugal and Remote Europe/EMEA.**
 
-O projeto contém a V1 utilizável do Radar, conectores para Greenhouse, Lever e Ashby, persistência idempotente e criação conservadora de vagas canônicas no PostgreSQL.
+JustWork turns fragmented career pages into a single, actionable queue. It collects vacancies directly from public Applicant Tracking Systems (ATS), keeps their history in PostgreSQL, removes duplicates conservatively, and explains whether each role appears accessible to someone based in Portugal.
 
-## Requisitos
+The project was built to solve a real job-search problem: maximize discovery without spending every day checking the same company pages, while keeping the final application decision human.
 
-- Node.js 20.9 ou superior
+> **Project status:** functional V1, designed for daily personal use. The current priority is a reliable, free workflow—not a feature-heavy recruitment platform.
+
+## What it does
+
+- Collects public vacancies from **Greenhouse, Lever (Global and Europe), and Ashby**.
+- Normalizes different provider payloads into one consistent domain model.
+- Persists collection history and updates listings idempotently.
+- Deduplicates vacancies using source identity, canonical URLs, and conservative company/title/location matching.
+- Classifies roles by family, remote policy, and eligibility for Portugal using deterministic, explainable rules.
+- Keeps uncertain results visible for human review instead of silently discarding them.
+- Provides a filterable radar to save, dismiss, restore, and inspect opportunities.
+- Tracks applications from submission through screening, interview, offer, or rejection.
+- Exposes source health, recent runs, failures, and protected collection controls.
+- Supports unattended daily collection through Windows Task Scheduler.
+
+## Why it is interesting
+
+The central engineering trade-off is **high recall during discovery and high precision during review**.
+
+JustWork deliberately avoids opaque scoring and premature infrastructure. Geographic eligibility is evidence-based, ambiguous matches are not merged, a single missing collection does not close a job, and personal decisions remain separate from the observed state of a vacancy. This makes the system easier to reason about, test, and evolve from real usage data.
+
+## How it works
+
+```mermaid
+flowchart LR
+    ATS[Public ATS APIs] --> C[Provider connectors]
+    C --> N[Normalize and validate]
+    N --> L[(Source listings)]
+    L --> D[Conservative deduplication]
+    D --> J[(Canonical jobs)]
+    J --> E[Eligibility and role classification]
+    E --> R[Review radar]
+    R --> A[Application tracker]
+```
+
+Each collection run is recorded independently. A failing source does not prevent the remaining sources from completing, and concurrent runs for the same source are blocked at the database level. Raw provider payloads are retained so normalization and classification rules can be improved without fetching the source again.
+
+## Product areas
+
+- **Radar:** searchable, paginated queue with filters for eligibility, role family, company, work model, freshness, source, vacancy status, and personal state.
+- **Job details:** sanitized description, eligibility rationale, dates, source provenance, notes, and application form.
+- **Applications:** lightweight pipeline for tracking the status of submitted applications.
+- **Sources & health:** operational dashboard for source configuration, collection history, failures, and freshness.
+
+## Tech stack
+
+| Area | Technology |
+| --- | --- |
+| Application | Next.js 16, React 19, TypeScript 6 |
+| Database | PostgreSQL 17 |
+| Data access | Drizzle ORM and versioned SQL migrations |
+| Validation and tests | Node.js test runner, fixture-based connector tests, PostgreSQL integration tests |
+| Local infrastructure | Docker Compose |
+| Scheduling | Windows Task Scheduler |
+
+The V1 intentionally uses no paid services, queues, microservices, machine learning, embeddings, or vector database.
+
+## Data model
+
+The model separates three concerns that are often accidentally mixed:
+
+1. **Provider observation** — `source_listings` stores the raw vacancy, content hash, first/last seen dates, and presence history.
+2. **Canonical opportunity** — `jobs` represents the deduplicated role and its normalized classification.
+3. **Personal workflow** — `job_actions` and `applications` store decisions and application progress without altering source truth.
+
+Supporting tables (`companies`, `sources`, and `source_runs`) provide company identity, connector configuration, and operational observability.
+
+## Getting started
+
+### Prerequisites
+
+- Node.js 20.9+
 - npm
-- Docker Desktop, ou outra instância local de PostgreSQL
+- Docker Desktop, or another PostgreSQL instance
 
-## Setup local
-
-1. Instale as dependências:
-
-   ```bash
-   npm install
-   ```
-
-2. Crie o arquivo de ambiente a partir de `.env.example` e mantenha a mesma `DATABASE_URL` se for usar o PostgreSQL do Docker.
-
-   No PowerShell:
-
-   ```powershell
-   Copy-Item .env.example .env
-   ```
-
-   Substitua `ADMIN_TOKEN` por uma frase longa e privada. Ela desbloqueia apenas as operações administrativas da página de fontes; fica num cookie `httpOnly` assinado e não é armazenada no banco.
-
-3. Inicie o PostgreSQL:
-
-   ```bash
-   docker compose up -d
-   ```
-
-4. Aplique as migrations:
-
-   ```bash
-   npm run db:migrate
-   ```
-
-5. Adicione os dados mínimos de desenvolvimento:
-
-   ```bash
-   npm run db:seed
-   ```
-
-6. Inicie a aplicação:
-
-   ```bash
-   npm run dev
-   ```
-
-A aplicação estará em `http://localhost:3000`. O endpoint `http://localhost:3000/api/health` verifica também a conexão com o PostgreSQL.
-
-## Usar o Radar
-
-- `/` apresenta apenas jobs canónicos, com filtros combináveis e paginação. Por omissão, inelegíveis e descartadas ficam fora da fila principal, mas continuam acessíveis pelo filtro “Incluir inelegíveis e descartadas”.
-- Os quatro atalhos no topo abrem as revisões de vagas incertas, família `other`, guardadas e ainda sem ação pessoal.
-- `/jobs/[id]` mostra a descrição em texto seguro, todas as fontes, datas de publicação e descoberta, notas e o formulário de candidatura.
-- `/applications` acompanha as candidaturas e permite atualizar o estágio do processo.
-- `/sources` mostra a saúde operacional, o histórico recente e, após informar `ADMIN_TOKEN`, permite coletar, ativar, desativar e cadastrar fontes dos ATS já suportados.
-
-A paginação da lista de candidaturas fica como melhoria futura. O volume atual não justifica adicionar essa complexidade à V1.
-
-Guardar, descartar ou restaurar uma vaga altera apenas o estado pessoal. A coleta continua a gerir separadamente o estado objetivo da oportunidade.
-
-## Comandos úteis
+### Installation
 
 ```bash
-npm run dev          # desenvolvimento
-npm run build        # build de produção
-npm run lint         # lint
-npm run typecheck    # validação de tipos
-npm run db:generate  # gera migration após alterar o schema
-npm run db:migrate   # aplica migrations pendentes
-npm run db:seed      # executa o seed idempotente
-npm run db:studio    # abre o Drizzle Studio
-npm test             # testes offline e integração PostgreSQL local
-npm run source:fetch # lista sources cadastradas
-npm run sources:collect # coleta sequencialmente todas as sources ativas
-npm run jobs:backfill # associa listings antigas a jobs canônicos
-npm run jobs:classify # reclassifica geografia e família dos jobs
+git clone https://github.com/thuliovs/justwork.git
+cd justwork
+npm install
 ```
 
-## Estrutura principal
-
-```text
-src/
-  app/                 Radar, detalhe, candidaturas, ações e rotas HTTP
-  lib/
-    connectors/        contrato mínimo dos futuros conectores
-    db/                acesso ao PostgreSQL, schema e seed
-    jobs/              regras de domínio das vagas nas próximas etapas
-    radar/             filtros, consultas, ações e sanitização da interface
-drizzle/               migrations SQL versionadas
-```
-
-## Modelo inicial
-
-O banco contém:
-
-- `companies`
-- `sources`
-- `source_runs`
-- `source_listings`
-- `jobs`
-- `job_actions`
-- `applications`
-
-O estado objetivo da vaga (`jobs.status`) é separado do estado pessoal (`job_actions.state`). `source_listings` registra separadamente coleta, primeira observação e última observação por meio de `raw_fetched_at`, `first_seen_at` e `last_seen_at`.
-
-Uma ausência isolada não fecha uma vaga. O campo `consecutive_misses` permite implementar depois uma política conservadora sem criar uma máquina de estados agora.
-
-## Conectores ATS
-
-A camada de conectores normaliza respostas de:
-
-- Greenhouse;
-- Lever Global;
-- Lever Europe;
-- Ashby.
-
-O seed adiciona fontes públicas de desenvolvimento e o registro prioritário P0/P1 validado no Deep Research. Esse registro inclui Dashlane, SingleStore, Talkdesk, Supabase, PostHog, Linear, ElevenLabs, Sourcegraph, Amplemarket, Customer.io e n8n. O cadastro é idempotente e preserva uma única source por endpoint conhecido. Para listar seus IDs:
-
-```bash
-npm run source:fetch
-```
-
-Para coletar e persistir uma source real:
-
-```bash
-npm run source:fetch -- <source-id>
-```
-
-O comando registra uma linha em `source_runs`, persiste as listings, cria ou reutiliza jobs canônicos na mesma transação e mostra o resumo da execução. Repetir a mesma coleta atualiza a observação sem criar duplicatas.
-
-## Operação diária
-
-Uma coleta completa e independente do servidor Next.js pode ser iniciada com:
+Create the local environment file. On PowerShell:
 
 ```powershell
+Copy-Item .env.example .env
+```
+
+Replace `ADMIN_TOKEN` with a long private value, then start the database and application:
+
+```bash
+docker compose up -d
+npm run db:migrate
+npm run db:seed
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000). The health endpoint at [http://localhost:3000/api/health](http://localhost:3000/api/health) also checks the PostgreSQL connection.
+
+## Daily operation
+
+Run all active sources sequentially:
+
+```bash
 npm run sources:collect
 ```
 
-Cada fonte é isolada: uma falha é registrada e as restantes continuam. O processo termina com código `0` somente quando todas as fontes concluem com sucesso; resultado parcial, falha ou coleta ignorada por concorrência termina com código `1` para o Agendador sinalizar atenção.
+One source failure is isolated and recorded while the remaining sources continue. The process exits with a non-zero code if any run fails, is partial, or is skipped because another collection is active.
 
-No Windows, instale a tarefa diária para o usuário atual (sem elevação) com:
+On Windows, a daily task can be installed for the current user without elevation:
 
 ```powershell
 .\scripts\install-daily-task.ps1 -At "08:00"
 ```
 
-A tarefa `justwork-daily-collection` usa um caminho absoluto para o runner, executa coletas perdidas quando o computador volta a ficar disponível e impede instâncias sobrepostas do próprio agendamento. Ela requer que o usuário esteja autenticado no Windows e que Docker Desktop/PostgreSQL estejam disponíveis; não transforma o computador numa operação 24/7. Para remover: `Unregister-ScheduledTask -TaskName justwork-daily-collection`.
+The scheduler runs missed collections when the computer becomes available and prevents overlapping scheduled instances. PostgreSQL must be running at collection time.
 
-Além disso, o banco aceita apenas um `source_run` em andamento por fonte. Um run abandonado por mais de duas horas é encerrado como falha na coleta seguinte, e o lock transacional existente continua protegendo a persistência sem manter transações abertas durante chamadas aos ATS.
+## Useful commands
 
-## Backlog de fontes
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | Start the development server |
+| `npm run build` | Create a production build |
+| `npm run lint` | Run ESLint |
+| `npm run typecheck` | Validate TypeScript types |
+| `npm test` | Run unit, fixture, and PostgreSQL integration tests |
+| `npm run db:migrate` | Apply pending database migrations |
+| `npm run db:seed` | Add or update the initial source registry |
+| `npm run db:studio` | Open Drizzle Studio |
+| `npm run source:fetch` | List configured sources |
+| `npm run source:fetch -- <source-id>` | Collect one source |
+| `npm run sources:collect` | Collect every active source |
+| `npm run jobs:backfill` | Link stored listings to canonical jobs |
+| `npm run jobs:classify` | Reclassify stored jobs without network access |
 
-Empresas já pesquisadas, mas deliberadamente não integradas nesta etapa:
+Tests use local fixtures instead of calling external ATS APIs. Database integration cases create temporary records and clean them up after execution.
 
-- Greenhouse P2: GitLab, Cloudflare, Datadog, Grafana Labs, Elastic, Salsify, Algolia e Airbyte.
-- Novo conector ou investigação: Sword Health, OutSystems, Codacy, Blip, Remote, Mercedes-Benz.io, Pipedrive, Canonical e Doist.
+## Repository structure
 
-Elas não devem ser cadastradas até haver priorização e, quando necessário, um conector adequado.
-
-Os testes de parsing e persistência não acessam APIs externas. Quando `DATABASE_URL` está disponível, a integração PostgreSQL usa registros temporários e os remove ao terminar:
-
-```bash
-npm test
+```text
+src/
+  app/                 Next.js pages, actions, and health endpoint
+  lib/
+    connectors/        Greenhouse, Lever, and Ashby adapters
+    db/                PostgreSQL schema, connection, and seed
+    jobs/              Normalization, matching, eligibility, and classification
+    radar/             Queries, filters, presentation, and personal actions
+    sources/           Collection orchestration and source operations
+  scripts/             Collection, backfill, and classification entry points
+drizzle/               Versioned SQL migrations
+scripts/               Windows scheduling helpers
+test/                  Unit, fixture, and integration tests
 ```
 
-## Vagas canônicas
+## Current scope and roadmap
 
-Cada `source_listing` é associada a um `job`. A deduplicação considera, nesta ordem:
+The current V1 covers structured ATS sources and the complete review-to-application workflow. Likely next steps, driven by actual usage, are:
 
-1. vínculo existente da listing;
-2. URL canônica sanitizada, desde que empresa e título não sejam contraditórios;
-3. empresa conhecida, título normalizado idêntico e localização conhecida/idêntica.
+- expand coverage to additional ATS providers and selected career pages;
+- add recency and source-quality metrics;
+- improve application-priority ranking with transparent rules;
+- measure which sources contribute unique, eligible opportunities;
+- add deployment only when local daily operation becomes a real constraint.
 
-URLs explícitas diferentes impedem o fallback, e resultados ambíguos permanecem separados. Uma resposta parcial ou uma falha não marca listings como ausentes; somente um inventário completo atualiza `is_present` e `consecutive_misses`, sem fechar jobs.
-
-Para associar dados coletados antes desta etapa, sem acessar APIs externas:
-
-```bash
-npm run jobs:backfill
-```
-
-O backfill é idempotente e usa os payloads já armazenados.
-
-## Elegibilidade e famílias de cargo
-
-A classificação geográfica é determinística e prioriza recall. Restrições explícitas do anúncio têm precedência, seguidas pelos metadados estruturados do ATS, localização declarada e contexto relevante da descrição. `Remote`, `Remote Europe` e `Remote EMEA` não tornam uma vaga automaticamente elegível para residentes em Portugal.
-
-Cada job recebe:
-
-- `remote_policy`: `remote`, `hybrid`, `onsite` ou `unknown`;
-- `eligibility`: `eligible`, `uncertain` ou `ineligible`;
-- uma justificativa legível em `eligibility_reason`;
-- uma `role_family` determinada pelo título e, nos cargos de integração/solutions, por evidência explícita de desenvolvimento.
-
-Para reclassificar todos os jobs usando apenas os dados armazenados:
-
-```bash
-npm run jobs:classify
-```
-
-O comando apresenta as distribuições por elegibilidade e família. Repeti-lo sem mudanças nos dados não reescreve os registros.
+Fit scoring, semantic search, and heavier infrastructure remain intentionally out of scope until the collected data demonstrates a concrete need.
